@@ -1,0 +1,63 @@
+#!/bin/bash
+
+c_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(lib|include|tools)/.*\.(cpp|h|hpp)$')
+py_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(python|regression)/.*\.(py)$')
+RED='\033[0;31m'
+NC='\033[0m'
+
+if ! command -v clang-format &> /dev/null
+then
+  echo -e "${RED}ERROR${NC}: No clang-format found, please install it with the following command.\n"
+  echo -e "\t sudo apt-get install -y clang-format\n"
+  exit 1
+fi
+
+if ! command -v yapf &> /dev/null
+then
+  echo -e "${RED}ERROR${NC}: No yapf found, please install it with the following command.\n"
+  echo -e "\t pip3 install yapf\n"
+  exit 1
+fi
+
+if [ -n "$c_files" ]; then
+    echo "Running clang-format on staged files..."
+    clang-format -i $c_files
+    if ! git diff --quiet; then
+        echo -e "${RED}Warning${NC}: Some cpp files were formatted. Please review the changes and then commit it again."
+        # git add $files
+        exit 1
+    fi
+fi
+echo "Success: clang-format check ok"
+
+if [ -n "$py_files" ]; then
+    echo "Running yapf on staged files..."
+    yapf -i --style .style.yapf $py_files
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${RED}ERROR${NC}: yapf failed. Please check your code"
+        exit 1
+    fi
+    if ! git diff --quiet; then
+        echo -e "${RED}Warning${NC}: Some python files were formatted. Please review the changes and then commit it again."
+        # git add $files
+        exit 1
+    fi
+fi
+echo "Success: yapf check ok"
+
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+LIB_DIR="${PROJECT_ROOT}/third_party/nntoolchain/lib"
+README_FILE="${PROJECT_ROOT}/third_party/nntoolchain/README.md"
+if git diff --cached --name-only | grep -qE "^third_party/nntoolchain/lib/.*\.(so*|a)$"; then
+    echo "Library files update detected, check whether README.md is updated accordingly.."
+
+    if ! git diff --cached --name-only | grep -q "^third_party/nntoolchain/README.md$"; then
+        echo -e "${RED}ERROR${NC}: README.md file not updated! Please update ${README_FILE} file to reflect changes to dynamic libraries."
+        exit 1
+    fi
+fi
+
+echo "Success: README.md update check ok"
+exit 0
+
